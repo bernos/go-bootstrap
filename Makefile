@@ -35,4 +35,13 @@ compile: test
 run: all
 	$(OUTPUT)
 
-.PHONY: all clean deps test compile run
+docker-build: deps
+	docker build -t $(NAME) .
+
+docker-install: compile
+	cp $(OUTPUT) $(GOROOT)/bin/app
+
+docker-run: docker-build
+	docker run --rm --name $(NAME) $(NAME)
+
+.PHONY: all clean deps test compile run docker-build docker-run
