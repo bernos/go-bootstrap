@@ -47,6 +47,13 @@ BIN = $(DIST_DIR)/$(NAME)
 # Golang package name
 PACKAGE = $(subst $(GOPATH)/src/,,$(PWD))
 
+# Target that will run our tests. If we are running in teamcity this will be
+# update to be test-teamcity
+TEST = test-local
+
+# A nice banner to let users know what we're building
+BANNER = "BUILDING $(NAME) VERSION $(VERSION)"
+
 ifeq ($(OS),Windows_NT)
 	# Force cmd.exe as shell on windows to relieve
 	# Interrupt/Exception caught (code = 0xc00000fd, addr = 0x4227d3)
@@ -58,15 +65,15 @@ endif
 # If we are running in teamcity then output the full, calculated build number
 # via service message. Also, pass all go test output to the go-junit-report
 # post processor
-ifndef TEAMCITY_VERSION
-	BANNER = ""
-	TEST = godep go test -v -cover ./...
-else
-	BANNER = "\#\#teamcity[buildNumber '$(VERSION)']"	
-	TEST = godep go test -v -cover ./... | go-junit-report > report.xml
+ifdef TEAMCITY_VERSION
+	BANNER += "\n\#\#teamcity[buildNumber '$(VERSION)']"	
+	TEST = test-teamcity
 endif
 
-all: clean test
+all: banner clean test dist
+
+banner:
+	@echo $(BANNER)
 
 $(DIST_DIR)/%:
 	@mkdir -p $(dir $@)
@@ -80,19 +87,22 @@ clean:
 	-rm -rf $(DIST_DIR)
 	-rm -rf report.xml
 
-build: $(BIN) $(ASSET_FILES:%=$(DIST_DIR)/%)
+dist: $(BIN) $(ASSET_FILES:%=$(DIST_DIR)/%)
 
 $(BIN): $(GO_GET:%=$(GOPATH)/src/%)
-	@echo "BUILDING $(NAME) VERSION $(VERSION)"
 	CGO_ENABLED=0 GOOS=linux godep go build \
 		-ldflags "-X main.version=$(VERSION)" \
 		-a \
 		-installsuffix cgo \
 		-o $(BIN)
 
-test: build
-	@echo $(BANNER)
-	$(TEST)
+test: $(TEST)
+
+test-local:
+	godep go test -v -cover ./...
+
+test-teamcity:
+	godep go test -v -cover ./... | go-junit-report > report.xml
 
 docker-build: test
 	docker build \
@@ -103,4 +113,4 @@ docker-build: test
 docker-push:
 	docker push $(DOCKER_IMAGE_NAME):$(VERSION)
 
-.PHONY: all build clean test docker-build docker-push
+.PHONY: all dist clean test docker-build docker-push
