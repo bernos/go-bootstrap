@@ -25,3 +25,6 @@ _testmain.go
 /.deps
 /deps
 /dist/go-bootstrap
+/dist/application.production.yaml
+/dist/application.staging.yaml
+/dist/application.yaml

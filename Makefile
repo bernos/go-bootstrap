@@ -20,6 +20,17 @@ NAME ?= $(notdir $(PWD))
 # make: `make DOCKER_IMAGE_NAME='user/image'`
 DOCKER_IMAGE_NAME ?= $(NAME)
 
+# Extra asset files, such as configuration files etc that need to be copied to
+# the dist folder as part of the build
+ASSET_FILES = application.yaml \
+			  application.staging.yaml \
+			  application.production.yaml
+
+# Any go tooling that needs to be installed to run the build. Each of these
+# will be passed to `go get -v ...`
+GO_GET = github.com/tools/godep \
+		 github.com/jstemmer/go-junit-report
+
 # Output dir
 DIST_DIR ?= dist
 
@@ -45,32 +56,34 @@ ifeq ($(OS),Windows_NT)
 	BIN=$(DIST_DIR)/$(NAME).exe
 endif
 
-all: test
+all: clean test
+
+$(DIST_DIR)/%:
+	@mkdir -p $(dir $@)
+	@cp $* $@
+
+$(GOPATH)/src/%:
+	go get -v $*
 
 clean:
 	go clean -i -x ./...
 	-rm -rf $(DIST_DIR)
 	-rm -rf report.xml
-	-rm -rf .deps
 
-.deps:
-	go get -v github.com/tools/godep && \
-	go get -v github.com/jstemmer/go-junit-report
-	touch .deps
+build: $(BIN) $(ASSET_FILES:%=$(DIST_DIR)/%)
 
-$(BIN): .deps 
+$(BIN): $(GO_GET:%=$(GOPATH)/src/%)
 	@echo "BUILDING $(NAME) VERSION $(VERSION)"
 	CGO_ENABLED=0 GOOS=linux godep go build \
 		-ldflags "-X main.version=$(VERSION)" \
 		-a \
 		-installsuffix cgo \
 		-o $(BIN)
-	# cp ./application*.yaml $(DIST_DIR)
 
-test: $(BIN)
+test: build
 	godep go test -v -cover ./...
 
-teamcity: $(BIN)
+teamcity: clean build
 	@echo "##teamcity[buildNumber '$(VERSION)']"
 	godep go test -v -cover ./... | go-junit-re port > report.xml
 
@@ -83,4 +96,4 @@ docker-build: test
 docker-push:
 	docker push $(DOCKER_IMAGE_NAME):$(VERSION)
 
-.PHONY: all clean test teamcity docker-build docker-push
+.PHONY: all build clean test teamcity docker-build docker-push
