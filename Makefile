@@ -21,10 +21,9 @@ NAME ?= $(notdir $(PWD))
 DOCKER_IMAGE_NAME ?= $(NAME)
 
 # Extra asset files, such as configuration files etc that need to be copied to
-# the dist folder as part of the build
-ASSET_FILES = application.yaml \
-			  application.staging.yaml \
-			  application.production.yaml
+# the dist folder as part of the build. We can use make wildcards here, such as
+# `$(wildcard css/*.css js/*.js)` 
+ASSET_FILES = $(wildcard *.yaml)
 
 # Any go tooling that needs to be installed to run the build. Each of these
 # will be passed to `go get -v ...`
