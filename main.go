@@ -5,5 +5,5 @@ import (
 )
 
 func main() {
-	fmt.Print("Hello, World")
+	fmt.Printf("Hello World from version %s", Version())
 }

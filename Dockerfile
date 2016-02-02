@@ -1,7 +1,12 @@
-FROM golang:1.5
+FROM centurylink/ca-certs
 
-COPY . /go/src/app
-WORKDIR /go/src/app
-RUN make docker-install 
+ARG DIST_DIR=./dist
+ARG BIN=${DIST_DIR}/main
+ENV PORT 9000
 
-CMD ["app"]
+COPY ${DIST_DIR}/ /
+COPY ${BIN} /main
+
+EXPOSE 9000
+
+ENTRYPOINT ["/main"]

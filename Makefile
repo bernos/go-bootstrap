@@ -1,47 +1,64 @@
-# Name of the binary to produce
-NAME=changeme
+# Name of the binary to produce. This will default to whatever the name of
+# the folder containing this makefile is. Can be overriden either by
+# setting the NAME env var, or by specifying a new value when invoking
+# make: `make NAME='foo'`
+NAME ?= $(notdir $(PWD))
+
+# The name of the docker image to create
+DOCKER_IMAGE_NAME ?= $(NAME)
 
 # Output dir
-OUTPUT_DIR=./dist
+DIST_DIR ?= dist
+
+# Build number
+BUILD_NUMBER ?= 0
+
+# Version
+VERSION = $(shell cat ./version.go | grep -o "[0-9]*\.[0-9]*\.[0-9]*")-$(BUILD_NUMBER)
 
 # Path to build artifact
-OUTPUT=$(OUTPUT_DIR)/$(NAME)
+BIN = $(DIST_DIR)/$(NAME)
+
+# Golang package name
+PACKAGE = $(subst $(GOPATH)/src/,,$(PWD))
 
 ifeq ($(OS),Windows_NT)
 	# Force cmd.exe as shell on windows to relieve
 	# Interrupt/Exception caught (code = 0xc00000fd, addr = 0x4227d3)
 	# See http://superuser.com/questions/375029/make-interrupt-exception-caught
 	SHELL=C:/Windows/System32/cmd.exe
-	OUTPUT=$(OUTPUT_DIR)/$(NAME).exe
+	BIN=$(DIST_DIR)/$(NAME).exe
 endif
 
-all: compile
+all: test
 
 clean:
 	go clean -i -x ./...
-	-rm -rf $(OUTPUT_DIR)
+	-rm -rf $(DIST_DIR)
+	-rm -rf report.xml
+	-rm -rf .deps
 
-deps:
+.deps:
 	go get -v github.com/tools/godep && \
-	godep save ./...
-	godep restore ./...
+	go get -v github.com/jstemmer/go-junit-report
+	touch .deps
 
-test: deps
-	godep go test -v ./...
+$(BIN): .deps 
+	@echo "BUILDING $(NAME) VERSION $(VERSION)"
+	CGO_ENABLED=0 GOOS=linux godep go build -ldflags "-X main.buildnumber=$(BUILD_NUMBER)" -a -installsuffix cgo -o $(BIN)
+	# cp ./application*.yaml $(DIST_DIR)
 
-compile: test
-	godep go build -o $(OUTPUT)
+test: $(BIN)
+	godep go test -v -cover ./...
 
-run: all
-	$(OUTPUT)
+teamcity: $(BIN)
+	@echo "##teamcity[buildNumber '$(VERSION)']"
+	godep go test -v -cover ./... | go-junit-re port > report.xml
 
-docker-build: deps
-	docker build -t $(NAME) .
+docker-build: test
+	docker build -t $(DOCKER_IMAGE_NAME):$(VERSION) --build-arg BIN=$(BIN) --build-arg DIST_DIR=$(DIST_DIR) .
 
-docker-install: compile
-	cp $(OUTPUT) $(GOROOT)/bin/app
+docker-push:
+	docker push $(DOCKER_IMAGE_NAME):$(VERSION)
 
-docker-run: docker-build
-	docker run --rm --name $(NAME) $(NAME)
-
-.PHONY: all clean deps test compile run docker-build docker-run
+.PHONY: all clean test teamcity docker-build docker-push
