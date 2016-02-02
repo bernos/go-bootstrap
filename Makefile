@@ -55,6 +55,17 @@ ifeq ($(OS),Windows_NT)
 	BIN=$(DIST_DIR)/$(NAME).exe
 endif
 
+# If we are running in teamcity then output the full, calculated build number
+# via service message. Also, pass all go test output to the go-junit-report
+# post processor
+ifndef TEAMCITY_VERSION
+	BANNER = ""
+	TEST = godep go test -v -cover ./...
+else
+	BANNER = "\#\#teamcity[buildNumber '$(VERSION)']"	
+	TEST = godep go test -v -cover ./... | go-junit-report > report.xml
+endif
+
 all: clean test
 
 $(DIST_DIR)/%:
@@ -80,11 +91,8 @@ $(BIN): $(GO_GET:%=$(GOPATH)/src/%)
 		-o $(BIN)
 
 test: build
-	godep go test -v -cover ./...
-
-teamcity: clean build
-	@echo "##teamcity[buildNumber '$(VERSION)']"
-	godep go test -v -cover ./... | go-junit-re port > report.xml
+	@echo $(BANNER)
+	$(TEST)
 
 docker-build: test
 	docker build \
@@ -95,4 +103,4 @@ docker-build: test
 docker-push:
 	docker push $(DOCKER_IMAGE_NAME):$(VERSION)
 
-.PHONY: all build clean test teamcity docker-build docker-push
+.PHONY: all build clean test docker-build docker-push

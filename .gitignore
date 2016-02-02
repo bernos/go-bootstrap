@@ -28,3 +28,4 @@ _testmain.go
 /dist/application.production.yaml
 /dist/application.staging.yaml
 /dist/application.yaml
+/report.xml
