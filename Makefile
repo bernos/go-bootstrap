@@ -14,7 +14,7 @@ DIST_DIR ?= dist
 BUILD_NUMBER ?= 0
 
 # Version
-VERSION = $(shell cat ./version.go | grep -o "[0-9]*\.[0-9]*\.[0-9]*")-$(BUILD_NUMBER)
+VERSION = $(shell cat version.txt)-$(BUILD_NUMBER)
 
 # Path to build artifact
 BIN = $(DIST_DIR)/$(NAME)
@@ -45,7 +45,7 @@ clean:
 
 $(BIN): .deps 
 	@echo "BUILDING $(NAME) VERSION $(VERSION)"
-	CGO_ENABLED=0 GOOS=linux godep go build -ldflags "-X main.buildnumber=$(BUILD_NUMBER)" -a -installsuffix cgo -o $(BIN)
+	CGO_ENABLED=0 GOOS=linux godep go build -ldflags "-X main.version=$(VERSION)" -a -installsuffix cgo -o $(BIN)
 	# cp ./application*.yaml $(DIST_DIR)
 
 test: $(BIN)
