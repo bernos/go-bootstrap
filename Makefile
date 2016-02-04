@@ -66,17 +66,18 @@ endif
 # via service message. Also, pass all go test output to the go-junit-report
 # post processor
 ifdef TEAMCITY_VERSION
-	BANNER += "\n\#\#teamcity[buildNumber '$(VERSION)']"	
+	BANNER += "\n\#\#teamcity[buildNumber '$(VERSION)']"
 	TEST = test-teamcity
 endif
 
-all: banner clean test dist
+all: banner test dist
 
 banner:
 	@echo $(BANNER)
 
-$(DIST_DIR)/%:
+$(DIST_DIR)/%: %
 	@mkdir -p $(dir $@)
+	@echo "Copying $* to $@"
 	@cp $* $@
 
 $(GOPATH)/src/%:
@@ -89,7 +90,7 @@ clean:
 
 dist: $(BIN) $(ASSET_FILES:%=$(DIST_DIR)/%)
 
-$(BIN): $(GO_GET:%=$(GOPATH)/src/%)
+$(BIN): $(GO_GET:%=$(GOPATH)/src/%) $(shell find . -name '*.go')
 	CGO_ENABLED=0 GOOS=linux godep go build \
 		-ldflags "-X main.version=$(VERSION)" \
 		-a \
@@ -113,4 +114,4 @@ docker-build: test
 docker-push:
 	docker push $(DOCKER_IMAGE_NAME):$(VERSION)
 
-.PHONY: all dist clean test docker-build docker-push
+.PHONY: all dist clean test test-local test-teamcity docker-build docker-push
