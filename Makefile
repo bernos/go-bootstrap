@@ -90,7 +90,7 @@ $(BIN): $(GO_GET:%=$(GOPATH)/src/%) $(shell find . -name '$(SRC_DIR)/*.go')
 		-o $(BIN) \
 		$(MAIN)
 
-test:
+test: $(GO_GET:%=$(GOPATH)/src/%)
 	$(TEST_CMD)
 
 docker-build: test dist
