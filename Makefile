@@ -1,12 +1,6 @@
 ################################################################################
 # This makefile should be able to build most golang > docker projects without
 # much modification.
-#
-# If your build process requires packaging or bundling of
-# assets then you will probably want to add to the `$(BIN)` target
-#
-# If you require extra tooling to be installed, you should add them to the
-# `.deps` target 
 ################################################################################
 
 # Name of the binary to produce. This will default to whatever the name of the
@@ -15,23 +9,29 @@
 # `make NAME='foo'`
 NAME ?= $(notdir $(PWD))
 
+# Our source files
+SRC_DIR ?= ./src
+
+# Output dir
+DIST_DIR ?= ./dist
+
 # The name of the docker image to create. Can be overriden either by setting the
 # DOCKER_IMAGE_NAME env var, or by specifying DOCKER_IMAGE_NAME when invoking
 # make: `make DOCKER_IMAGE_NAME='user/image'`
 DOCKER_IMAGE_NAME ?= $(NAME)
 
 # Extra asset files, such as configuration files etc that need to be copied to
-# the dist folder as part of the build. We can use make wildcards here, such as
-# `$(wildcard css/*.css js/*.js)` 
-ASSET_FILES = $(wildcard *.yaml)
+# the dist folder as part of the build. By default this will be any file in
+# our source dir that is not a .go source file
+ASSET_FILES = $(filter-out $(wildcard $(SRC_DIR)/*.go), $(wildcard $(SRC_DIR)/*))
 
 # Any go tooling that needs to be installed to run the build. Each of these
 # will be passed to `go get -v ...`
 GO_GET = github.com/tools/godep \
 		 github.com/jstemmer/go-junit-report
 
-# Output dir
-DIST_DIR ?= dist
+# Path to our main .go source file
+MAIN ?= $(SRC_DIR)/main.go
 
 # Build number. This will normally be set by a CI server BUILD_NUMBER env var,
 # but you can alternatively set it when invoking make by using
@@ -47,9 +47,8 @@ BIN = $(DIST_DIR)/$(NAME)
 # Golang package name
 PACKAGE = $(subst $(GOPATH)/src/,,$(PWD))
 
-# Target that will run our tests. If we are running in teamcity this will be
-# update to be test-teamcity
-TEST = test-local
+# Command that will run our tests
+TEST_CMD = godep go test -v -cover $(SRC_DIR)/...
 
 # A nice banner to let users know what we're building
 BANNER = "BUILDING $(NAME) VERSION $(VERSION)"
@@ -67,7 +66,8 @@ endif
 # post processor
 ifdef TEAMCITY_VERSION
 	BANNER += "\n\#\#teamcity[buildNumber '$(VERSION)']"
-	TEST = test-teamcity
+	TEST_CMD += | go-junit-report > report.xml
+
 endif
 
 all: banner test dist
@@ -75,43 +75,43 @@ all: banner test dist
 banner:
 	@echo $(BANNER)
 
-$(DIST_DIR)/%: %
-	@mkdir -p $(dir $@)
-	@echo "Copying $* to $@"
-	@cp $* $@
-
-$(GOPATH)/src/%:
-	go get -v $*
-
 clean:
 	go clean -i -x ./...
 	-rm -rf $(DIST_DIR)
 	-rm -rf report.xml
 
-dist: $(BIN) $(ASSET_FILES:%=$(DIST_DIR)/%)
+dist: $(BIN) $(ASSET_FILES:$(SRC_DIR)/%=$(DIST_DIR)/%)
 
-$(BIN): $(GO_GET:%=$(GOPATH)/src/%) $(shell find . -name '*.go')
+$(BIN): $(GO_GET:%=$(GOPATH)/src/%) $(shell find . -name '$(SRC_DIR)/*.go')
 	CGO_ENABLED=0 GOOS=linux godep go build \
 		-ldflags "-X main.version=$(VERSION)" \
 		-a \
 		-installsuffix cgo \
-		-o $(BIN)
+		-o $(BIN) \
+		$(MAIN)
 
-test: $(TEST)
+test:
+	$(TEST_CMD)
 
-test-local:
-	godep go test -v -cover ./...
-
-test-teamcity:
-	godep go test -v -cover ./... | go-junit-report > report.xml
-
-docker-build: test
+docker-build: test dist
 	docker build \
 		-t $(DOCKER_IMAGE_NAME):$(VERSION) \
 		--build-arg BIN=$(BIN) \
 		--build-arg DIST_DIR=$(DIST_DIR) .
+	docker tag \
+		$(DOCKER_IMAGE_NAME):$(VERSION) \
+		$(DOCKER_IMAGE_NAME):latest
 
 docker-push:
 	docker push $(DOCKER_IMAGE_NAME):$(VERSION)
+	docker push $(DOCKER_IMAGE_NAME):latest
+
+$(DIST_DIR)/%: $(SRC_DIR)/%
+	@mkdir -p $(dir $@)
+	@echo "Copying $< to $@"
+	@cp $< $@
+
+$(GOPATH)/src/%:
+	go get -v $*
 
 .PHONY: all dist clean test test-local test-teamcity docker-build docker-push
