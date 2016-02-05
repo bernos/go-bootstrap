@@ -20,6 +20,9 @@ DIST_DIR ?= ./dist
 # make: `make DOCKER_IMAGE_NAME='user/image'`
 DOCKER_IMAGE_NAME ?= $(NAME)
 
+# The docker registry for tagging and pushing to
+DOCKER_REGISTRY ?= dockerregistry.seekinfra.com
+
 # Extra asset files, such as configuration files etc that need to be copied to
 # the dist folder as part of the build. By default this will be any file in
 # our source dir that is not a .go source file
@@ -30,16 +33,13 @@ ASSET_FILES = $(filter-out $(wildcard $(SRC_DIR)/*.go), $(wildcard $(SRC_DIR)/*)
 GO_GET = github.com/tools/godep \
 		 github.com/jstemmer/go-junit-report
 
-# Path to our main .go source file
-MAIN ?= $(SRC_DIR)/main.go
-
 # Build number. This will normally be set by a CI server BUILD_NUMBER env var,
 # but you can alternatively set it when invoking make by using
 # `make BUILD_NUMBER=123`
 BUILD_NUMBER ?= 0
 
 # Version number form `0.0.0-0`. Set the base version number in version.txt
-VERSION = $(shell cat version.txt)-$(BUILD_NUMBER)
+VERSION ?= $(shell cat version.txt)-$(BUILD_NUMBER)
 
 # Path to build artifact
 BIN = $(DIST_DIR)/$(NAME)
@@ -67,7 +67,6 @@ endif
 ifdef TEAMCITY_VERSION
 	BANNER += "\n\#\#teamcity[buildNumber '$(VERSION)']"
 	TEST_CMD += | go-junit-report > report.xml
-
 endif
 
 all: banner test dist
@@ -88,23 +87,25 @@ $(BIN): $(GO_GET:%=$(GOPATH)/src/%) $(shell find . -name '$(SRC_DIR)/*.go')
 		-a \
 		-installsuffix cgo \
 		-o $(BIN) \
-		$(MAIN)
+		$(SRC_DIR)/*.go
 
 test: $(GO_GET:%=$(GOPATH)/src/%)
 	$(TEST_CMD)
 
 docker-build: test dist
+	chmod +x $(BIN)
 	docker build \
-		-t $(DOCKER_IMAGE_NAME):$(VERSION) \
+		-t $(DOCKER_REGISTRY)/$(DOCKER_IMAGE_NAME):$(VERSION) \
 		--build-arg BIN=$(BIN) \
 		--build-arg DIST_DIR=$(DIST_DIR) .
 	docker tag \
-		$(DOCKER_IMAGE_NAME):$(VERSION) \
-		$(DOCKER_IMAGE_NAME):latest
+		-f \
+		$(DOCKER_REGISTRY)/$(DOCKER_IMAGE_NAME):$(VERSION) \
+		$(DOCKER_REGISTRY)/$(DOCKER_IMAGE_NAME):latest
 
 docker-push:
-	docker push $(DOCKER_IMAGE_NAME):$(VERSION)
-	docker push $(DOCKER_IMAGE_NAME):latest
+	docker push $(DOCKER_REGISTRY)/$(DOCKER_IMAGE_NAME):$(VERSION)
+	docker push $(DOCKER_REGISTRY)/$(DOCKER_IMAGE_NAME):latest
 
 $(DIST_DIR)/%: $(SRC_DIR)/%
 	@mkdir -p $(dir $@)
